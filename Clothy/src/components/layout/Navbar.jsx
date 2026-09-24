@@ -7,7 +7,7 @@
  * - Scroll UP: Smoothly expands back
  * - Mobile: Hamburger → slide-in drawer
  */
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useLayoutEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import gsap from 'gsap';
@@ -23,12 +23,14 @@ import {
   LogOut,
   ChevronDown,
   ChevronRight,
+  ArrowRight,
 } from 'lucide-react';
 import useScrollDirection from '../../hooks/useScrollDirection';
 import useCartStore from '../../store/useCartStore';
 import useWishlistStore from '../../store/useWishlistStore';
 import useUIStore from '../../store/useUIStore';
 import useUserStore from '../../store/useUserStore';
+import categories from '../../data/categories';
 import { cn } from '../../utils/cn';
 import MobileMenu from './MobileMenu';
 
@@ -51,18 +53,83 @@ const categoryDropdown = [
   { path: '/category/accessories', label: 'Accessories' },
 ];
 
+// Mega menu groups — related categories bundled together
+const APPAREL_SLUGS = ['shirts', 't-shirts', 'jeans', 'dresses', 'jackets'];
+
+const megaMenuGroups = [
+  {
+    title: 'Apparel',
+    items: categories
+      .filter((c) => APPAREL_SLUGS.includes(c.slug))
+      .map((c) => ({ ...c, path: `/category/${c.slug}` })),
+  },
+  {
+    title: 'Footwear & Accessories',
+    items: categories
+      .filter((c) => !APPAREL_SLUGS.includes(c.slug))
+      .map((c) => ({ ...c, path: `/category/${c.slug}` })),
+  },
+];
+
+// Grace period so moving from the link into the panel never flickers
+const CLOSE_DELAY = 150;
+
 export default function Navbar() {
   const navRef = useRef(null);
   const logoRef = useRef(null);
-  const { scrollDirection, isAtTop } = useScrollDirection();
+  const { scrollDirection, isAtTop, scrollY } = useScrollDirection();
   const location = useLocation();
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [announcementHeight, setAnnouncementHeight] = useState(0);
+  const closeTimerRef = useRef(null);
 
   const cartCount = useCartStore((s) => s.getItemCount());
   const wishlistCount = useWishlistStore((s) => s.items.length);
-  const { openCart, openWishlist, openSearch, openMobileMenu, isMobileMenuOpen, closeMobileMenu, darkMode, toggleDarkMode } = useUIStore();
+  const { openCart, openWishlist, openSearch, openMobileMenu, isMobileMenuOpen, closeMobileMenu, darkMode, toggleDarkMode, announcementVisible } = useUIStore();
   const { isLoggedIn, user, login, logout } = useUserStore();
+
+  // Mega menu hover — immediate open, delayed close (prevents flicker while
+  // the cursor travels between the Categories link and the panel)
+  const openCategories = () => {
+    clearTimeout(closeTimerRef.current);
+    setShowCategoryDropdown(true);
+  };
+
+  const scheduleCategoriesClose = () => {
+    clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => setShowCategoryDropdown(false), CLOSE_DELAY);
+  };
+
+  const closeCategories = () => {
+    clearTimeout(closeTimerRef.current);
+    setShowCategoryDropdown(false);
+  };
+
+  useEffect(() => () => clearTimeout(closeTimerRef.current), []);
+
+  // Close the mega menu on navigation
+  useEffect(() => {
+    setShowCategoryDropdown(false);
+  }, [location.pathname]);
+
+  // Measure the welcome/announcement bar so the navbar always sits directly
+  // below it (and never overlaps), then glides to top:0 as the bar scrolls away
+  useLayoutEffect(() => {
+    if (!announcementVisible) {
+      setAnnouncementHeight(0);
+      return;
+    }
+    const bar = document.querySelector('.announcement-ticker');
+    if (!bar) return;
+    const measure = () => setAnnouncementHeight(bar.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, [announcementVisible]);
+
+  const navTop = Math.max(0, announcementHeight - scrollY);
 
   // GSAP scroll-based navbar animation
   useEffect(() => {
@@ -126,10 +193,10 @@ export default function Navbar() {
     <>
       <nav
         ref={navRef}
-        className="fixed top-0 left-0 right-0 z-40 flex items-center"
-        style={{ height: 80 }}
+        className="fixed left-0 right-0 z-40 flex items-center"
+        style={{ height: 80, top: navTop }}
       >
-        <div className="container-custom w-full flex items-center justify-between">
+        <div className="container-custom relative z-10 w-full flex items-center justify-between">
           {/* Mobile Hamburger */}
           <button
             className="btn-icon inline-flex lg:hidden -ml-2"
@@ -155,8 +222,8 @@ export default function Navbar() {
               <div
                 key={link.path}
                 className="relative"
-                onMouseEnter={() => link.hasDropdown && setShowCategoryDropdown(true)}
-                onMouseLeave={() => link.hasDropdown && setShowCategoryDropdown(false)}
+                onMouseEnter={() => link.hasDropdown && openCategories()}
+                onMouseLeave={() => link.hasDropdown && scheduleCategoriesClose()}
               >
                 <Link
                   to={link.path === '/categories' ? '/shop' : link.path}
@@ -174,40 +241,6 @@ export default function Navbar() {
                     <span className="absolute bottom-0.5 left-3.5 right-3.5 xl:left-4 xl:right-4 h-[2px] bg-gold rounded-full" />
                   )}
                 </Link>
-
-                {/* Category Dropdown */}
-                {link.hasDropdown && (
-                  <AnimatePresence>
-                    {showCategoryDropdown && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 8 }}
-                        transition={{ duration: 0.2 }}
-                        className="absolute top-full left-0 mt-3 w-[240px] bg-white dark:bg-charcoal-light rounded-xl shadow-elevated border border-gray-200/60 dark:border-gray-700/60 p-2"
-                      >
-                        <span className="block px-4 pt-2 pb-2.5 mb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400 border-b border-gray-100 dark:border-gray-700/70">
-                          Shop by Category
-                        </span>
-                        <div className="flex flex-col gap-0.5">
-                          {categoryDropdown.map((cat) => (
-                            <Link
-                              key={cat.path}
-                              to={cat.path}
-                              className="group flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-charcoal dark:text-cream hover:bg-gold/10 hover:text-gold transition-all duration-200 hover:translate-x-0.5"
-                            >
-                              {cat.label}
-                              <ChevronRight
-                                size={14}
-                                className="text-gray-300 dark:text-gray-600 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 group-hover:text-gold transition-all duration-200"
-                              />
-                            </Link>
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                )}
               </div>
               );
             })}
@@ -329,6 +362,106 @@ export default function Navbar() {
             </div>
           </div>
         </div>
+
+        {/* Categories Mega Menu — full-width panel sliding down from the navbar */}
+        <AnimatePresence>
+          {showCategoryDropdown && (
+            <motion.div
+              initial={{ opacity: 0, y: -24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -24 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              onMouseEnter={openCategories}
+              onMouseLeave={scheduleCategoriesClose}
+              className="hidden lg:block absolute top-full left-0 right-0 bg-white dark:bg-charcoal-light border-t border-b border-gray-200/70 dark:border-gray-700/70 shadow-elevated"
+            >
+              <div className="container-custom py-6 sm:py-8 max-h-[calc(100dvh_-_8rem)] overflow-y-auto">
+                {/* Panel header */}
+                <div className="flex items-end justify-between gap-4 mb-5 sm:mb-7">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold">
+                      Shop by Category
+                    </p>
+                    <h3 className="mt-1 font-serif text-lg sm:text-xl font-semibold text-charcoal dark:text-cream">
+                      Browse Our Collections
+                    </h3>
+                  </div>
+                  <Link
+                    to="/shop"
+                    onClick={closeCategories}
+                    className="group inline-flex shrink-0 items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-charcoal dark:text-cream hover:text-gold transition-colors"
+                  >
+                    View All
+                    <ArrowRight
+                      size={14}
+                      className="transition-transform duration-200 group-hover:translate-x-1"
+                    />
+                  </Link>
+                </div>
+
+                {/* Grouped category grid */}
+                <div className="flex flex-col gap-8 lg:flex-row">
+                  {megaMenuGroups.map((group, gi) => (
+                    <div
+                      key={group.title}
+                      className={cn(
+                        'min-w-0',
+                        gi === 0
+                          ? 'lg:flex-[5]'
+                          : 'lg:flex-[2] lg:border-l lg:border-gray-200/70 dark:lg:border-gray-700/70 lg:pl-10'
+                      )}
+                    >
+                      <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">
+                        {group.title}
+                      </p>
+                      <div
+                        className={cn(
+                          'grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4',
+                          gi === 0 ? 'lg:grid-cols-5' : 'lg:grid-cols-2'
+                        )}
+                      >
+                        {group.items.map((cat) => (
+                          <Link
+                            key={cat.slug}
+                            to={cat.path}
+                            onClick={closeCategories}
+                            className="group block overflow-hidden rounded-xl border border-gray-200/70 dark:border-gray-700/70 bg-cream/60 dark:bg-charcoal/40 hover:border-gold/50 hover:shadow-soft transition-all duration-300"
+                          >
+                            <div className="aspect-[16/10] overflow-hidden bg-cream-dark dark:bg-charcoal-light">
+                              <img
+                                src={cat.image}
+                                alt={cat.name}
+                                loading="lazy"
+                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              />
+                            </div>
+                            <div className="p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-semibold text-charcoal dark:text-cream group-hover:text-gold transition-colors">
+                                  {cat.name}
+                                </span>
+                                <ChevronRight
+                                  size={14}
+                                  className="shrink-0 text-gray-300 dark:text-gray-600 group-hover:text-gold group-hover:translate-x-0.5 transition-all duration-200"
+                                />
+                              </div>
+                              <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
+                                {cat.description}
+                              </p>
+                              <p className="mt-1.5 text-[11px] font-semibold text-gold">
+                                {cat.productCount} products
+                              </p>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
 
       {/* Mobile Menu Drawer */}

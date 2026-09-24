@@ -2,11 +2,11 @@
  * AnnouncementBar — Thin promotional marquee bar above navbar
  * Continuously scrolls right → left; scrolls away with the page (not fixed)
  */
-import { useState } from 'react';
 import { X } from 'lucide-react';
+import useUIStore from '../../store/useUIStore';
 
 const announcements = [
-  'Free shipping on orders above ₹1,999 ✨',
+  'Free Shipping on Orders Above ₹1999',
   'New Season Collection — Shop Now →',
   'Use code WELCOME500 for ₹500 off your first order',
 ];
@@ -15,7 +15,8 @@ const announcements = [
 const itemsPerHalf = [...announcements, ...announcements, ...announcements];
 
 export default function AnnouncementBar() {
-  const [isVisible, setIsVisible] = useState(true);
+  const isVisible = useUIStore((s) => s.announcementVisible);
+  const hideAnnouncement = useUIStore((s) => s.hideAnnouncement);
 
   if (!isVisible) return null;
 
@@ -32,7 +33,9 @@ export default function AnnouncementBar() {
             {itemsPerHalf.map((text, i) => (
               <span
                 key={`${half}-${i}`}
-                className="flex items-center gap-3 px-5 sm:px-7 font-medium tracking-wide whitespace-nowrap"
+                className={`flex items-center gap-3 px-5 sm:px-7 tracking-wide whitespace-nowrap ${
+                  i % announcements.length === 0 ? 'font-bold text-gold' : 'font-medium'
+                }`}
               >
                 {text}
                 <span className="text-gold" aria-hidden="true">
@@ -45,7 +48,7 @@ export default function AnnouncementBar() {
       </div>
 
       <button
-        onClick={() => setIsVisible(false)}
+        onClick={hideAnnouncement}
         className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded-full bg-charcoal/90 text-cream hover:bg-gold hover:text-white transition-colors"
         aria-label="Close announcement"
       >

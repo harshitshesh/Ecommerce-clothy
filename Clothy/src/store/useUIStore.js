@@ -14,6 +14,9 @@ const useUIStore = create(
       isMobileMenuOpen: false,
       darkMode: false,
       quickViewProduct: null,
+      announcementVisible: true,
+
+      hideAnnouncement: () => set({ announcementVisible: false }),
 
       openCart: () => set({ isCartOpen: true }),
       closeCart: () => set({ isCartOpen: false }),
