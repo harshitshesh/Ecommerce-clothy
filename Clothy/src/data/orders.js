@@ -1,11 +1,40 @@
 /**
  * CLOZARI — Mock Orders Data
+ * These belong to the seeded showcase account (usr_demo) only — every other
+ * account sees exactly the orders it placed itself.
+ * Dates are relative to "now" so the delivered demo order always sits inside
+ * the 7-day return/exchange window.
  */
+const DAY = 24 * 60 * 60 * 1000;
+const now = Date.now();
+const at = (daysAgo) => new Date(now - daysAgo * DAY).toISOString().slice(0, 10);
+
+const time = (hour, minute, meridiem) =>
+  `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} ${meridiem}`;
+
+/** Customer snapshot frozen on every order (also drives the PDF invoice). */
+const demoCustomer = {
+  name: 'Demo Patron',
+  email: 'demo@clozari.com',
+  phone: '9876000000',
+  address: {
+    name: 'Demo Patron',
+    line1: 'Studio 12, 5th Cross',
+    line2: 'Indiranagar',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    pin: '560038',
+    phone: '9876000000',
+  },
+};
+
 const orders = [
   {
     id: 'ORD-2026-001',
-    date: '2026-09-15',
+    userId: 'usr_demo',
+    date: at(6),
     status: 'Delivered',
+    deliveredAt: new Date(now - 2 * DAY).toISOString(),
     items: [
       { productId: 'prod_001', name: 'Oversized Cotton Shirt', size: 'L', color: 'Charcoal', quantity: 1, price: 1899, image: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=200&q=80' },
       { productId: 'prod_004', name: 'Essential Crew Neck Tee', size: 'M', color: 'Black', quantity: 2, price: 999, image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=200&q=80' },
@@ -14,19 +43,22 @@ const orders = [
     discount: 500,
     shipping: 0,
     total: 3397,
-    address: { name: 'Arjun Mehta', line1: '42, Park Street', line2: 'Koramangala', city: 'Bangalore', state: 'Karnataka', pin: '560034', phone: '9876543210' },
+    address: demoCustomer.address,
+    customer: demoCustomer,
+    paymentMethod: 'UPI',
     payment: { method: 'UPI', last4: '****' },
     tracking: [
-      { status: 'Order Placed', date: '2026-09-15 10:30 AM', completed: true },
-      { status: 'Confirmed', date: '2026-09-15 11:00 AM', completed: true },
-      { status: 'Shipped', date: '2026-09-16 02:00 PM', completed: true },
-      { status: 'Out for Delivery', date: '2026-09-18 09:00 AM', completed: true },
-      { status: 'Delivered', date: '2026-09-18 03:30 PM', completed: true },
+      { status: 'Order Placed', date: `${at(6)} ${time(10, 30, 'AM')}`, completed: true },
+      { status: 'Confirmed', date: `${at(6)} ${time(11, 0, 'AM')}`, completed: true },
+      { status: 'Shipped', date: `${at(5)} ${time(2, 0, 'PM')}`, completed: true },
+      { status: 'Out for Delivery', date: `${at(3)} ${time(9, 0, 'AM')}`, completed: true },
+      { status: 'Delivered', date: `${at(2)} ${time(3, 30, 'PM')}`, completed: true },
     ],
   },
   {
     id: 'ORD-2026-002',
-    date: '2026-09-20',
+    userId: 'usr_demo',
+    date: at(3),
     status: 'Shipped',
     items: [
       { productId: 'prod_013', name: 'Leather Biker Jacket', size: 'M', color: 'Black', quantity: 1, price: 9999, image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=200&q=80' },
@@ -35,19 +67,22 @@ const orders = [
     discount: 0,
     shipping: 0,
     total: 9999,
-    address: { name: 'Arjun Mehta', line1: '42, Park Street', line2: 'Koramangala', city: 'Bangalore', state: 'Karnataka', pin: '560034', phone: '9876543210' },
+    address: demoCustomer.address,
+    customer: demoCustomer,
+    paymentMethod: 'Card',
     payment: { method: 'Card', last4: '4242' },
     tracking: [
-      { status: 'Order Placed', date: '2026-09-20 08:15 AM', completed: true },
-      { status: 'Confirmed', date: '2026-09-20 08:45 AM', completed: true },
-      { status: 'Shipped', date: '2026-09-21 11:00 AM', completed: true },
+      { status: 'Order Placed', date: `${at(3)} ${time(8, 15, 'AM')}`, completed: true },
+      { status: 'Confirmed', date: `${at(3)} ${time(8, 45, 'AM')}`, completed: true },
+      { status: 'Shipped', date: `${at(2)} ${time(11, 0, 'AM')}`, completed: true },
       { status: 'Out for Delivery', date: '', completed: false },
       { status: 'Delivered', date: '', completed: false },
     ],
   },
   {
     id: 'ORD-2026-003',
-    date: '2026-09-22',
+    userId: 'usr_demo',
+    date: at(1),
     status: 'Processing',
     items: [
       { productId: 'prod_010', name: 'Midi Wrap Dress — Emerald', size: 'S', color: 'Emerald', quantity: 1, price: 3599, image: 'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=200&q=80' },
@@ -57,11 +92,13 @@ const orders = [
     discount: 200,
     shipping: 0,
     total: 5798,
-    address: { name: 'Arjun Mehta', line1: '42, Park Street', line2: 'Koramangala', city: 'Bangalore', state: 'Karnataka', pin: '560034', phone: '9876543210' },
+    address: demoCustomer.address,
+    customer: demoCustomer,
+    paymentMethod: 'COD',
     payment: { method: 'COD', last4: '' },
     tracking: [
-      { status: 'Order Placed', date: '2026-09-22 10:00 AM', completed: true },
-      { status: 'Confirmed', date: '2026-09-22 10:30 AM', completed: true },
+      { status: 'Order Placed', date: `${at(1)} ${time(10, 0, 'AM')}`, completed: true },
+      { status: 'Confirmed', date: `${at(1)} ${time(10, 30, 'AM')}`, completed: true },
       { status: 'Shipped', date: '', completed: false },
       { status: 'Out for Delivery', date: '', completed: false },
       { status: 'Delivered', date: '', completed: false },

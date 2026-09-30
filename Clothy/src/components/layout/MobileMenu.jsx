@@ -2,12 +2,12 @@
  * MobileMenu — Slide-in drawer for mobile navigation
  * Framer Motion staggered entrance animation
  */
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ChevronRight, Sun, Moon, LogIn, LogOut } from 'lucide-react';
 import { useState } from 'react';
 import useUIStore from '../../store/useUIStore';
-import useUserStore from '../../store/useUserStore';
+import useAuthStore from '../../store/useAuthStore';
 
 const menuVariants = {
   closed: { x: '-100%' },
@@ -28,9 +28,12 @@ const backdropVariants = {
 
 export default function MobileMenu({ isOpen, onClose, navLinks, categoryLinks }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [showCategories, setShowCategories] = useState(false);
   const { darkMode, toggleDarkMode } = useUIStore();
-  const { isLoggedIn, user, login, logout } = useUserStore();
+  const user = useAuthStore((s) => s.session);
+  const logout = useAuthStore((s) => s.logout);
+  const isLoggedIn = Boolean(user);
 
   return (
     <AnimatePresence>
@@ -143,10 +146,26 @@ export default function MobileMenu({ isOpen, onClose, navLinks, categoryLinks })
                     <Link to="/account/orders" onClick={onClose} className="block px-5 py-3 text-sm text-charcoal dark:text-cream hover:text-gold transition-colors">My Orders</Link>
                   </motion.div>
                   <motion.div variants={itemVariants}>
+                    <Link to="/account/wallet" onClick={onClose} className="block px-5 py-3 text-sm text-charcoal dark:text-cream hover:text-gold transition-colors">Clozari Wallet</Link>
+                  </motion.div>
+                  <motion.div variants={itemVariants}>
+                    <Link to="/wishlist" onClick={onClose} className="block px-5 py-3 text-sm text-charcoal dark:text-cream hover:text-gold transition-colors">Wishlist</Link>
+                  </motion.div>
+                  <motion.div variants={itemVariants}>
                     <Link to="/account/addresses" onClick={onClose} className="block px-5 py-3 text-sm text-charcoal dark:text-cream hover:text-gold transition-colors">Addresses</Link>
                   </motion.div>
                 </>
-              ) : null}
+              ) : (
+                <motion.div variants={itemVariants}>
+                  <Link
+                    to="/login"
+                    onClick={onClose}
+                    className="block px-5 py-3 text-sm text-charcoal dark:text-cream hover:text-gold transition-colors"
+                  >
+                    My Account
+                  </Link>
+                </motion.div>
+              )}
             </div>
 
             {/* Footer Actions */}
@@ -161,18 +180,19 @@ export default function MobileMenu({ isOpen, onClose, navLinks, categoryLinks })
 
               {isLoggedIn ? (
                 <button
-                  onClick={() => { logout(); onClose(); }}
+                  onClick={() => { logout(); onClose(); navigate('/'); }}
                   className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-error rounded-lg border border-error/30 hover:bg-error/5 transition-colors"
                 >
                   <LogOut size={18} /> Sign Out
                 </button>
               ) : (
-                <button
-                  onClick={() => { login(); onClose(); }}
+                <Link
+                  to="/login"
+                  onClick={onClose}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-charcoal dark:bg-cream text-cream dark:text-charcoal rounded-lg hover:opacity-90 transition-opacity"
                 >
                   <LogIn size={18} /> Sign In
-                </button>
+                </Link>
               )}
             </div>
           </motion.div>

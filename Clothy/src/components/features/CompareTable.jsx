@@ -1,20 +1,37 @@
 /**
  * CompareTable — Side-by-side garment comparison matrix (up to 4 products)
  */
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { X, ShoppingBag, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useCompareStore from '../../store/useCompareStore';
 import useCartStore from '../../store/useCartStore';
+import useAuthStore from '../../store/useAuthStore';
 import RatingStars from '../ui/RatingStars';
 import { formatCurrency } from '../../utils/formatCurrency';
 
 export default function CompareTable() {
   const { items, removeItem, clearAll } = useCompareStore();
   const addToCart = useCartStore((s) => s.addItem);
+  const gateCartAction = useAuthStore((s) => s.gateCartAction);
+  const location = useLocation();
 
   const handleAddToCart = (prod) => {
-    addToCart(prod, prod.sizes?.[0] || 'M', prod.colors?.[0] || null);
+    const size = prod.sizes?.[0] || 'M';
+    const colour = prod.colors?.[0] || null;
+
+    // Auth gate: logged-out visitors get the prompt instead of a cart add.
+    const gated = gateCartAction({
+      productId: prod.id,
+      sku: `${prod.id.toUpperCase()}-${colour?.name || 'STD'}-${size}`,
+      colour,
+      size,
+      qty: 1,
+      returnTo: `${location.pathname}${location.search}`,
+    });
+    if (gated) return;
+
+    addToCart(prod, size, colour);
     toast.success(`Added ${prod.name} to bag!`, { icon: '🛍️' });
   };
 

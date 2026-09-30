@@ -1,31 +1,39 @@
 /**
  * Account Page — User account portal with profile, address book, and notifications
  */
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { User, MapPin, Bell, Package, Heart, LogOut, Trash2, Plus, ShieldCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { User, MapPin, Bell, Package, Heart, LogIn, LogOut, Trash2, Plus, ShieldCheck, Coins, Wallet } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Breadcrumbs from '../components/ui/Breadcrumbs';
 import AddressForm from '../components/features/AddressForm';
 import useUserStore from '../store/useUserStore';
+import useAuthStore from '../store/useAuthStore';
+import { useAddresses } from '../hooks/useCurrentUser';
+import useWallet from '../hooks/useWallet';
 
 export default function Account() {
   const {
-    user,
-    isLoggedIn,
-    login,
-    logout,
-    addresses,
-    addAddress,
-    removeAddress,
     notifications,
     markNotificationRead,
   } = useUserStore();
+  const addresses = useAddresses();
+  const addAddress = useAuthStore((s) => s.addAddress);
+  const removeAddress = useAuthStore((s) => s.removeAddress);
+  const user = useAuthStore((s) => s.session);
+  const logout = useAuthStore((s) => s.logout);
+  const { coins: walletBalance } = useWallet(user?.id);
+  const isLoggedIn = Boolean(user);
 
   const [activeTab, setActiveTab] = useState('profile'); // 'profile', 'addresses', 'notifications'
   const [showAddressForm, setShowAddressForm] = useState(false);
-  const [loginName, setLoginName] = useState('Arjun Mehta');
-  const [loginEmail, setLoginEmail] = useState('arjun@example.com');
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // /account/addresses opens the address book panel
+  useEffect(() => {
+    if (location.pathname === '/account/addresses') setActiveTab('addresses');
+  }, [location.pathname]);
 
   if (!isLoggedIn) {
     return (
@@ -41,47 +49,12 @@ export default function Account() {
             Enter your credentials to access your orders, personal sizing notes, and private privileges.
           </p>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              login(loginName, loginEmail);
-              toast.success(`Welcome, ${loginName}!`);
-            }}
-            className="space-y-4 text-xs text-left"
+          <Link
+            to={`/login?redirect=${encodeURIComponent('/account')}`}
+            className="btn btn-primary w-full"
           >
-            <div>
-              <label className="block font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
-                Full Name
-              </label>
-              <input
-                type="text"
-                required
-                value={loginName}
-                onChange={(e) => setLoginName(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal text-charcoal dark:text-cream focus:outline-none focus:border-gold"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
-                Email Address
-              </label>
-              <input
-                type="email"
-                required
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal text-charcoal dark:text-cream focus:outline-none focus:border-gold"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-3.5 bg-charcoal text-cream dark:bg-cream dark:text-charcoal rounded-xl font-bold uppercase tracking-widest hover:opacity-90 transition-opacity shadow-soft"
-            >
-              Sign In to Account
-            </button>
-          </form>
+            <LogIn size={16} /> Continue to Sign In
+          </Link>
         </div>
       </div>
     );
@@ -118,6 +91,7 @@ export default function Account() {
             onClick={() => {
               logout();
               toast.success('Signed out successfully');
+              navigate('/');
             }}
             className="px-4 py-2 text-xs font-semibold text-error hover:bg-error/10 rounded-lg transition-colors flex items-center gap-1.5"
           >
@@ -145,6 +119,18 @@ export default function Account() {
               className="w-full text-left px-4 py-3 rounded-xl font-semibold text-gray-600 dark:text-gray-300 hover:bg-cream-dark dark:hover:bg-gray-800 transition-colors flex items-center gap-3"
             >
               <Package size={16} /> Order History
+            </Link>
+
+            <Link
+              to="/account/wallet"
+              className="w-full text-left px-4 py-3 rounded-xl font-semibold text-gray-600 dark:text-gray-300 hover:bg-cream-dark dark:hover:bg-gray-800 transition-colors flex items-center justify-between gap-3"
+            >
+              <span className="flex items-center gap-3">
+                <Wallet size={16} /> Clozari Wallet
+              </span>
+              <span className="flex items-center gap-1 text-gold font-bold">
+                <Coins size={13} /> {walletBalance}
+              </span>
             </Link>
 
             <button
@@ -205,6 +191,12 @@ export default function Account() {
                     <span className="font-semibold text-gold text-sm">Privilege Atelier Gold</span>
                   </div>
                   <div className="p-4 rounded-xl bg-cream-dark/30 dark:bg-charcoal-light/20 border border-gray-200/50 dark:border-gray-800">
+                    <span className="text-gray-400 block mb-1">Clozari Wallet</span>
+                    <span className="font-semibold text-gold text-sm flex items-center gap-1.5">
+                      <Coins size={14} /> {walletBalance} coins
+                    </span>
+                  </div>
+                  <div className="p-4 rounded-xl bg-cream-dark/30 dark:bg-charcoal-light/20 border border-gray-200/50 dark:border-gray-800">
                     <span className="text-gray-400 block mb-1">Security Status</span>
                     <span className="font-semibold text-success text-sm flex items-center gap-1">
                       <ShieldCheck size={14} /> Two-Factor Enabled
@@ -255,6 +247,23 @@ export default function Account() {
                       }}
                       onCancel={() => setShowAddressForm(false)}
                     />
+                  </div>
+                ) : addresses.length === 0 ? (
+                  <div className="p-10 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 text-center">
+                    <MapPin size={26} className="mx-auto text-gold mb-3" />
+                    <p className="font-serif font-bold text-lg text-charcoal dark:text-cream mb-1">
+                      Add your first address
+                    </p>
+                    <p className="text-xs text-gray-500 mb-5 max-w-sm mx-auto">
+                      Your address book starts empty — save the destinations you ship to and
+                      they will be ready at checkout.
+                    </p>
+                    <button
+                      onClick={() => setShowAddressForm(true)}
+                      className="px-5 py-2.5 bg-charcoal text-cream dark:bg-cream dark:text-charcoal rounded-xl text-xs font-bold uppercase tracking-wider hover:opacity-90 transition-opacity inline-flex items-center gap-1.5"
+                    >
+                      <Plus size={14} /> Add Address
+                    </button>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

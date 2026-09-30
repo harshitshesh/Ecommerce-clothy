@@ -1,7 +1,7 @@
 /**
  * Wishlist Page — Complete saved wardrobe items with Move to Bag and direct removal
  */
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Trash2, ShoppingBag } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Breadcrumbs from '../components/ui/Breadcrumbs';
@@ -9,31 +9,70 @@ import EmptyState from '../components/ui/EmptyState';
 import useWishlistStore from '../store/useWishlistStore';
 import useCartStore from '../store/useCartStore';
 import useUIStore from '../store/useUIStore';
+import useAuthStore from '../store/useAuthStore';
 import products from '../data/products';
 import { formatCurrency } from '../utils/formatCurrency';
 
 export default function Wishlist() {
   const { items, removeItem } = useWishlistStore();
   const addToCart = useCartStore((s) => s.addItem);
+  const gateCartAction = useAuthStore((s) => s.gateCartAction);
   const openCart = useUIStore((s) => s.openCart);
+  const location = useLocation();
+  const returnTo = `${location.pathname}${location.search}`;
+
+  const resolveVariant = (item) => {
+    const fullProduct = products.find((p) => p.id === item.id);
+    return {
+      fullProduct,
+      size: fullProduct?.sizes?.[0] || 'M',
+      colour: fullProduct?.colors?.[0] || { name: 'Standard', hex: '#000000' },
+    };
+  };
 
   const handleMoveToCart = (item) => {
-    const fullProduct = products.find((p) => p.id === item.id);
-    const size = fullProduct?.sizes?.[0] || 'M';
-    const color = fullProduct?.colors?.[0] || { name: 'Standard', hex: '#000000' };
+    const { fullProduct, size, colour } = resolveVariant(item);
 
-    addToCart(fullProduct || item, size, color);
+    // Auth gate: logged-out visitors get the prompt instead of a cart add.
+    const gated = gateCartAction({
+      productId: item.id,
+      sku: `${item.id.toUpperCase()}-${colour.name}-${size}`,
+      colour,
+      size,
+      qty: 1,
+      returnTo,
+    });
+    if (gated) return;
+
+    addToCart(fullProduct || item, size, colour);
     removeItem(item.id);
     toast.success(`Moved ${item.name} to your bag!`, { icon: '🛍️' });
     openCart();
   };
 
   const handleMoveAllToCart = () => {
-    items.forEach((item) => {
-      const fullProduct = products.find((p) => p.id === item.id);
-      const size = fullProduct?.sizes?.[0] || 'M';
-      const color = fullProduct?.colors?.[0] || { name: 'Standard', hex: '#000000' };
-      addToCart(fullProduct || item, size, color);
+    const resolved = items.map((item) => ({ item, ...resolveVariant(item) }));
+
+    // Auth gate: the whole batch is held until the visitor signs in.
+    const gated = gateCartAction({
+      productId: resolved[0].item.id,
+      sku: `${resolved[0].item.id.toUpperCase()}-${resolved[0].colour.name}-${resolved[0].size}`,
+      colour: resolved[0].colour,
+      size: resolved[0].size,
+      qty: 1,
+      returnTo,
+      items: resolved.map(({ item, size, colour }) => ({
+        productId: item.id,
+        sku: `${item.id.toUpperCase()}-${colour.name}-${size}`,
+        colour,
+        size,
+        qty: 1,
+      })),
+    });
+    if (gated) return;
+
+    resolved.forEach(({ item, fullProduct, size, colour }) => {
+      addToCart(fullProduct || item, size, colour);
       removeItem(item.id);
     });
     toast.success('Moved all saved garments to your bag!', { icon: '🛍️' });

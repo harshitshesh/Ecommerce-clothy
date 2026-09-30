@@ -12,9 +12,12 @@ import NewsletterForm from '../components/features/NewsletterForm';
 import ProductGrid from '../components/ui/ProductGrid';
 import products from '../data/products';
 import useUserStore from '../store/useUserStore';
+import useAuthStore from '../store/useAuthStore';
 
 export default function Home() {
-  const { recentlyViewed, user, isLoggedIn } = useUserStore();
+  const { recentlyViewed } = useUserStore();
+  const user = useAuthStore((s) => s.session);
+  const isLoggedIn = Boolean(user);
 
   const bestsellers = products.filter((p) => p.tags.includes('bestseller')).slice(0, 4);
   const newArrivals = products.filter((p) => p.tags.includes('new')).slice(0, 4);

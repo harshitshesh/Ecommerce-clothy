@@ -8,7 +8,7 @@
  * - Mobile: Hamburger → slide-in drawer
  */
 import { useRef, useEffect, useState, useLayoutEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import gsap from 'gsap';
 import {
@@ -19,17 +19,18 @@ import {
   Menu,
   Sun,
   Moon,
-  LogIn,
   LogOut,
   ChevronDown,
   ChevronRight,
   ArrowRight,
+  Coins,
 } from 'lucide-react';
 import useScrollDirection from '../../hooks/useScrollDirection';
 import useCartStore from '../../store/useCartStore';
 import useWishlistStore from '../../store/useWishlistStore';
 import useUIStore from '../../store/useUIStore';
-import useUserStore from '../../store/useUserStore';
+import useAuthStore from '../../store/useAuthStore';
+import useWallet from '../../hooks/useWallet';
 import categories from '../../data/categories';
 import { cn } from '../../utils/cn';
 import MobileMenu from './MobileMenu';
@@ -79,15 +80,19 @@ export default function Navbar() {
   const logoRef = useRef(null);
   const { scrollDirection, isAtTop, scrollY } = useScrollDirection();
   const location = useLocation();
+  const navigate = useNavigate();
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [announcementHeight, setAnnouncementHeight] = useState(0);
   const closeTimerRef = useRef(null);
 
-  const cartCount = useCartStore((s) => s.getItemCount());
+  const cartCount = useCartStore((s) => s.items.reduce((count, item) => count + (item.quantity || 1), 0));
   const wishlistCount = useWishlistStore((s) => s.items.length);
   const { openCart, openWishlist, openSearch, openMobileMenu, isMobileMenuOpen, closeMobileMenu, darkMode, toggleDarkMode, announcementVisible } = useUIStore();
-  const { isLoggedIn, user, login, logout } = useUserStore();
+  const user = useAuthStore((s) => s.session);
+  const logout = useAuthStore((s) => s.logout);
+  const isLoggedIn = Boolean(user);
+  const { coins: walletBalance } = useWallet(user?.id);
 
   // Mega menu hover — immediate open, delayed close (prevents flicker while
   // the cursor travels between the Categories link and the panel)
@@ -111,6 +116,7 @@ export default function Navbar() {
   // Close the mega menu on navigation
   useEffect(() => {
     setShowCategoryDropdown(false);
+    setShowUserDropdown(false);
   }, [location.pathname]);
 
   // Measure the welcome/announcement bar so the navbar always sits directly
@@ -311,54 +317,64 @@ export default function Navbar() {
               onMouseEnter={() => setShowUserDropdown(true)}
               onMouseLeave={() => setShowUserDropdown(false)}
             >
-              <button className="btn-icon inline-flex" aria-label="Account">
-                <User size={20} />
-              </button>
-              <AnimatePresence>
-                {showUserDropdown && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 8 }}
-                    transition={{ duration: 0.2 }}
-                    className="absolute top-full right-0 mt-3 w-[240px] bg-white dark:bg-charcoal-light rounded-xl shadow-elevated border border-gray-200/60 dark:border-gray-700/60 p-2"
-                  >
-                    {isLoggedIn ? (
-                      <>
+              {!isLoggedIn ? (
+                /* Signed out → straight to the login page */
+                <Link
+                  to="/login"
+                  className="btn-icon inline-flex"
+                  aria-label="Log in"
+                  title="Log in"
+                >
+                  <User size={20} />
+                </Link>
+              ) : (
+                <>
+                  <button className="btn-icon inline-flex" aria-label="Account menu">
+                    <User size={20} />
+                  </button>
+                  <AnimatePresence>
+                    {showUserDropdown && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 8 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute top-full right-0 mt-3 w-[240px] bg-white dark:bg-charcoal-light rounded-xl shadow-elevated border border-gray-200/60 dark:border-gray-700/60 p-2"
+                      >
                         <div className="px-4 py-3 mb-1.5 border-b border-gray-100 dark:border-gray-700/70">
-                          <p className="text-sm font-semibold text-charcoal dark:text-cream">{user?.name}</p>
-                          <p className="text-xs text-gray-500 mt-0.5">{user?.email}</p>
+                          <p className="text-sm font-semibold text-charcoal dark:text-cream">
+                            {user?.name?.split(' ')[0]}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5 truncate">{user?.email}</p>
+                          <Link
+                            to="/account/wallet"
+                            className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-gold/10 border border-gold/30 text-gold text-[11px] font-bold"
+                          >
+                            <Coins size={12} /> {walletBalance} wallet coins
+                          </Link>
                         </div>
                         <div className="flex flex-col gap-0.5">
                           <Link to="/account" className="rounded-lg px-4 py-2.5 text-sm text-charcoal dark:text-cream hover:bg-gold/10 hover:text-gold transition-all duration-200 hover:translate-x-0.5">My Profile</Link>
                           <Link to="/account/orders" className="rounded-lg px-4 py-2.5 text-sm text-charcoal dark:text-cream hover:bg-gold/10 hover:text-gold transition-all duration-200 hover:translate-x-0.5">My Orders</Link>
-                          <Link to="/account/wishlist" className="rounded-lg px-4 py-2.5 text-sm text-charcoal dark:text-cream hover:bg-gold/10 hover:text-gold transition-all duration-200 hover:translate-x-0.5">Wishlist</Link>
+                          <Link to="/account/wallet" className="rounded-lg px-4 py-2.5 text-sm text-charcoal dark:text-cream hover:bg-gold/10 hover:text-gold transition-all duration-200 hover:translate-x-0.5">Clozari Wallet</Link>
+                          <Link to="/wishlist" className="rounded-lg px-4 py-2.5 text-sm text-charcoal dark:text-cream hover:bg-gold/10 hover:text-gold transition-all duration-200 hover:translate-x-0.5">Wishlist</Link>
                           <Link to="/account/addresses" className="rounded-lg px-4 py-2.5 text-sm text-charcoal dark:text-cream hover:bg-gold/10 hover:text-gold transition-all duration-200 hover:translate-x-0.5">Addresses</Link>
                           <hr className="my-1 border-gray-100 dark:border-gray-700/70" />
                           <button
-                            onClick={logout}
+                            onClick={() => {
+                              logout();
+                              navigate('/');
+                            }}
                             className="w-full text-left rounded-lg px-4 py-2.5 text-sm text-error hover:bg-error/10 transition-colors flex items-center gap-2"
                           >
-                            <LogOut size={16} /> Sign Out
+                            <LogOut size={16} /> Log out
                           </button>
                         </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="px-4 py-3">
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Sign in for a personalized experience</p>
-                          <button
-                            onClick={() => login()}
-                            className="btn btn-primary w-full !min-h-[44px] !py-2.5 !px-4 !text-sm !tracking-normal !normal-case"
-                          >
-                            <LogIn size={16} /> Sign In
-                          </button>
-                        </div>
-                      </>
+                      </motion.div>
                     )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  </AnimatePresence>
+                </>
+              )}
             </div>
           </div>
         </div>

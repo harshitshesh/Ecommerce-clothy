@@ -8,7 +8,7 @@ import useUIStore from '../../store/useUIStore';
 const announcements = [
   'Free Shipping on Orders Above ₹1999',
   'New Season Collection — Shop Now →',
-  'Use code WELCOME500 for ₹500 off your first order',
+  'Use code WELCOME15 for 15% off your first order',
 ];
 
 // Repeat enough times per half so one half is always wider than the viewport

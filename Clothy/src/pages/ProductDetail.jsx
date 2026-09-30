@@ -2,8 +2,8 @@
  * ProductDetail Page — Editorial single product showcase
  * Zoomable gallery, interactive swatches, size guide modal, tabbed technical specs, reviews, and related pieces
  */
-import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { Heart, ShoppingBag, Truck, RefreshCw, ShieldCheck, Share2, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Breadcrumbs from '../components/ui/Breadcrumbs';
@@ -20,34 +20,90 @@ import useCartStore from '../store/useCartStore';
 import useWishlistStore from '../store/useWishlistStore';
 import useCompareStore from '../store/useCompareStore';
 import useUserStore from '../store/useUserStore';
+import useAuthStore from '../store/useAuthStore';
 import useUIStore from '../store/useUIStore';
 import { formatCurrency, getDiscountPercent } from '../utils/formatCurrency';
+import useProductStore from '../store/useProductStore';
+import { getVariantStock, getVariantSku } from '../utils/variantStock';
 
 export default function ProductDetail() {
   const { slug } = useParams();
-  const product = products.find((p) => p.slug === slug);
+  const productsList = useProductStore((s) => s.products);
+  const storeProduct = useMemo(
+    () => (productsList || []).find((p) => p.slug === slug) || null,
+    [productsList, slug]
+  );
+  const product = storeProduct || products.find((p) => p.slug === slug);
 
   const addItem = useCartStore((s) => s.addItem);
+  const gateCartAction = useAuthStore((s) => s.gateCartAction);
   const { toggleItem, isWishlisted } = useWishlistStore();
   const { addItem: addToCompare, isComparing, removeItem: removeFromCompare } = useCompareStore();
   const addToRecentlyViewed = useUserStore((s) => s.addToRecentlyViewed);
   const openCart = useUIStore((s) => s.openCart);
+  const location = useLocation();
 
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState('description'); // 'description', 'reviews', 'shipping'
+  const [stockRevision, setStockRevision] = useState(0);
+
+  // Re-render when admin updates variant matrix in localStorage
+  useEffect(() => {
+    const handleStockUpdate = () => setStockRevision((r) => r + 1);
+    window.addEventListener('clozari-stock-updated', handleStockUpdate);
+    return () => window.removeEventListener('clozari-stock-updated', handleStockUpdate);
+  }, []);
 
   // Sync state & record recently viewed
   useEffect(() => {
     if (product) {
-      setSelectedSize(product.sizes?.[0] || 'M');
-      setSelectedColor(product.colors?.[0] || null);
+      const initialColor = product.colors?.[0] || null;
+      setSelectedColor(initialColor);
+
+      // Find first in-stock size if available, otherwise default to first size
+      const firstInStock = (product.sizes || []).find(
+        (s) => getVariantStock(product, initialColor?.name, s) > 0
+      );
+      setSelectedSize(firstInStock || product.sizes?.[0] || 'M');
+
       setQuantity(1);
       addToRecentlyViewed(product);
       window.scrollTo(0, 0);
     }
   }, [product, addToRecentlyViewed]);
+
+  // Compute live stock map per size for the currently selected color
+  const sizeStockMap = useMemo(() => {
+    if (!product) return {};
+    const map = {};
+    (product.sizes || []).forEach((sz) => {
+      map[sz] = getVariantStock(product, selectedColor?.name, sz);
+    });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product, selectedColor, stockRevision]);
+
+  // Dynamic gallery images updated instantly by color swatch selection (PRD 1.1 / 3.1 Step 4)
+  const currentColorImages = useMemo(() => {
+    if (!product) return [];
+    if (selectedColor?.images && selectedColor.images.length > 0) {
+      return selectedColor.images;
+    }
+    if (product.colorImages && selectedColor?.name && product.colorImages[selectedColor.name]) {
+      return product.colorImages[selectedColor.name];
+    }
+    // If multiple colors & multiple images, offset images by color index for distinct views
+    if (product.colors && product.colors.length > 1 && product.images && product.images.length > 1) {
+      const colorIdx = product.colors.findIndex((c) => c.name === selectedColor?.name);
+      if (colorIdx > 0) {
+        const offset = colorIdx % product.images.length;
+        return [...product.images.slice(offset), ...product.images.slice(0, offset)];
+      }
+    }
+    return product.images || [];
+  }, [product, selectedColor]);
 
   if (!product) {
     return (
@@ -71,9 +127,53 @@ export default function ProductDetail() {
     .filter((p) => p.category === product.category && p.id !== product.id)
     .slice(0, 4);
 
+  const handleSelectColor = (color) => {
+    setSelectedColor(color);
+    // If current selectedSize is out of stock in new color, switch to first in-stock size
+    const currentStock = getVariantStock(product, color?.name, selectedSize);
+    if (currentStock <= 0) {
+      const firstInStock = (product.sizes || []).find(
+        (s) => getVariantStock(product, color?.name, s) > 0
+      );
+      if (firstInStock) {
+        setSelectedSize(firstInStock);
+      }
+    }
+  };
+
   const handleAddToCart = () => {
+    if (!selectedSize) {
+      toast.error('Please select a size before adding to your bag.');
+      return;
+    }
+
+    const liveStock = getVariantStock(product, selectedColor?.name, selectedSize);
+    if (liveStock <= 0) {
+      toast.error(
+        `Size ${selectedSize} in ${selectedColor?.name || 'this color'} is out of stock.`
+      );
+      return;
+    }
+    if (quantity > liveStock) {
+      toast.error(`Only ${liveStock} item(s) available in size ${selectedSize}.`);
+      return;
+    }
+
+    const sku = getVariantSku(product.id, selectedColor?.name, selectedSize);
+
+    // Auth gate: logged-out visitors get the prompt instead of a cart add.
+    const gated = gateCartAction({
+      productId: product.id,
+      sku,
+      colour: selectedColor,
+      size: selectedSize,
+      qty: quantity,
+      returnTo: `${location.pathname}${location.search}`,
+    });
+    if (gated) return;
+
     addItem(product, selectedSize, selectedColor, quantity);
-    toast.success(`${product.name} added to your bag!`, { icon: '🛍️' });
+    toast.success(`${product.name} (${selectedSize} / ${selectedColor?.name || 'Standard'}) added to bag!`, { icon: '🛍️' });
     openCart();
   };
 
@@ -118,7 +218,7 @@ export default function ProductDetail() {
           {/* Left: Gallery (Col 7) */}
           <div className="lg:col-span-7">
             <ProductGallery
-              images={product.images}
+              images={currentColorImages}
               name={product.name}
               tags={product.tags}
               price={product.price}
@@ -180,7 +280,7 @@ export default function ProductDetail() {
                 <ColorSwatch
                   colors={product.colors}
                   selectedColor={selectedColor}
-                  onSelectColor={setSelectedColor}
+                  onSelectColor={handleSelectColor}
                 />
               )}
 
@@ -190,6 +290,7 @@ export default function ProductDetail() {
                   sizes={product.sizes}
                   selectedSize={selectedSize}
                   onSelectSize={setSelectedSize}
+                  stockMap={sizeStockMap}
                   stock={product.stock}
                 />
               )}

@@ -1,34 +1,40 @@
 /**
  * Cart Page — Full shopping bag review with order calculation and coupon management
  */
-import { Link } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Trash2, Plus, Minus, ArrowRight, ShieldCheck, Truck } from 'lucide-react';
+import toast from 'react-hot-toast';
 import Breadcrumbs from '../components/ui/Breadcrumbs';
 import EmptyState from '../components/ui/EmptyState';
 import CouponInput from '../components/features/CouponInput';
+import OfferList from '../components/features/OfferList';
+import PriceBreakdown from '../components/features/PriceBreakdown';
 import useCartStore from '../store/useCartStore';
+import usePricing from '../hooks/usePricing';
 import { formatCurrency } from '../utils/formatCurrency';
 
 const FREE_SHIPPING_THRESHOLD = 1999;
 
 export default function Cart() {
-  const {
-    items,
-    removeItem,
-    updateQuantity,
-    getSubtotal,
-    getDiscount,
-    getShipping,
-    getTotal,
-    clearCart,
-  } = useCartStore();
+  const { items, removeItem, updateQuantity, applyOffer, clearCart } = useCartStore();
+  const pricing = usePricing();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const subtotal = getSubtotal();
-  const discount = getDiscount();
-  const shipping = getShipping();
-  const total = getTotal();
+  const subtotal = pricing.subtotal;
   const amountNeeded = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal);
   const progressToFreeShipping = Math.min(100, Math.round((subtotal / FREE_SHIPPING_THRESHOLD) * 100));
+
+  // Offers page → "Use in cart" lands here as /cart?offer=CODE
+  useEffect(() => {
+    const code = searchParams.get('offer');
+    if (!code) return;
+    const res = applyOffer(code);
+    if (res.success) toast.success(res.message, { icon: '🎉' });
+    else toast.error(res.message);
+    searchParams.delete('offer');
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams, applyOffer]);
 
   if (items.length === 0) {
     return (
@@ -206,34 +212,15 @@ export default function Cart() {
             </h3>
 
             {/* Cost Breakdown */}
-            <div className="space-y-3 text-xs">
-              <div className="flex justify-between text-gray-600 dark:text-gray-300">
-                <span>Bag Subtotal</span>
-                <span className="font-semibold text-charcoal dark:text-cream">{formatCurrency(subtotal)}</span>
-              </div>
-
-              {discount > 0 && (
-                <div className="flex justify-between text-success">
-                  <span>Promotional Savings</span>
-                  <span className="font-semibold">-{formatCurrency(discount)}</span>
-                </div>
-              )}
-
-              <div className="flex justify-between text-gray-600 dark:text-gray-300">
-                <span>Estimated Delivery</span>
-                <span>{shipping === 0 ? <span className="text-success font-semibold">FREE</span> : formatCurrency(shipping)}</span>
-              </div>
-
-              <div className="flex justify-between text-base font-bold text-charcoal dark:text-cream pt-4 border-t border-gray-200/60 dark:border-gray-800">
-                <span>Estimated Total</span>
-                <span className="text-gold font-serif text-xl">{formatCurrency(total)}</span>
-              </div>
-            </div>
+            <PriceBreakdown pricing={pricing} title="" />
 
             {/* Coupon Code Component */}
             <div className="pt-2">
               <CouponInput />
             </div>
+
+            {/* Available Offers */}
+            <OfferList className="pt-1" />
 
             {/* Checkout CTA */}
             <Link

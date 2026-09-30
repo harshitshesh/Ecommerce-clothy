@@ -5,11 +5,13 @@ import { useState } from 'react';
 import { Mail, Phone, MapPin, Clock, Send, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Breadcrumbs from '../components/ui/Breadcrumbs';
+import { useSession } from '../hooks/useCurrentUser';
 
 export default function Contact() {
+  const session = useSession();
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
+    name: session?.name || '',
+    email: session?.email || '',
     subject: 'General Inquiry',
     message: '',
   });
@@ -68,7 +70,7 @@ export default function Contact() {
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Arjun Mehta"
+                    placeholder="Your full name"
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal text-charcoal dark:text-cream focus:outline-none focus:border-gold"
                   />
                 </div>
@@ -82,7 +84,7 @@ export default function Contact() {
                     required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="arjun@example.com"
+                    placeholder="you@example.com"
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal text-charcoal dark:text-cream focus:outline-none focus:border-gold"
                   />
                 </div>

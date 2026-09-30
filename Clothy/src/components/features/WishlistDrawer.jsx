@@ -3,13 +3,14 @@
  * Allows quickly viewing saved pieces, moving to cart, or deleting
  */
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Heart, ShoppingBag, Trash2, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useWishlistStore from '../../store/useWishlistStore';
 import useCartStore from '../../store/useCartStore';
 import useUIStore from '../../store/useUIStore';
+import useAuthStore from '../../store/useAuthStore';
 import { formatCurrency } from '../../utils/formatCurrency';
 import products from '../../data/products';
 
@@ -17,6 +18,8 @@ export default function WishlistDrawer() {
   const { isWishlistOpen, closeWishlist, openCart } = useUIStore();
   const { items, removeItem } = useWishlistStore();
   const addToCart = useCartStore((s) => s.addItem);
+  const gateCartAction = useAuthStore((s) => s.gateCartAction);
+  const location = useLocation();
 
   // Close on ESC
   useEffect(() => {
@@ -38,6 +41,20 @@ export default function WishlistDrawer() {
     const fullProduct = products.find((p) => p.id === item.id);
     const size = fullProduct?.sizes?.[0] || 'M';
     const color = fullProduct?.colors?.[0] || { name: 'Default', hex: '#000000' };
+
+    // Auth gate: logged-out visitors get the prompt instead of a cart add.
+    const gated = gateCartAction({
+      productId: item.id,
+      sku: `${item.id.toUpperCase()}-${color.name}-${size}`,
+      colour: color,
+      size,
+      qty: 1,
+      returnTo: `${location.pathname}${location.search}`,
+    });
+    if (gated) {
+      closeWishlist();
+      return;
+    }
 
     addToCart(fullProduct || item, size, color);
     removeItem(item.id);

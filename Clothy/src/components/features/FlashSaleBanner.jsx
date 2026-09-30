@@ -54,12 +54,12 @@ export default function FlashSaleBanner() {
             </p>
 
             {/* Countdown Component */}
-            {flashSale.endsAt && (
+            {flashSale.validTill && (
               <div className="mb-8">
                 <span className="text-xs uppercase tracking-widest text-gold font-bold block mb-3">
                   Offer Ends In:
                 </span>
-                <CountdownTimer targetDate={flashSale.endsAt} size="md" />
+                <CountdownTimer targetDate={flashSale.validTill} size="md" />
               </div>
             )}
 

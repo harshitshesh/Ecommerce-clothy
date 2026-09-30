@@ -9,38 +9,47 @@ import SortDropdown from '../components/features/SortDropdown';
 import EmptyState from '../components/ui/EmptyState';
 import categories, { getCategoryBySlug } from '../data/categories';
 import products from '../data/products';
+import useProductStore from '../store/useProductStore';
 
 export default function CategoryPage() {
   const { slug } = useParams();
   const category = getCategoryBySlug(slug) || categories.find((c) => c.slug === slug);
   const [sortBy, setSortBy] = useState('featured');
+  const productsList = useProductStore((s) => s.products);
+  const allProducts = useMemo(() => {
+    const active = (productsList || []).filter((p) => !p.isArchived);
+    return active.length > 0 ? active : products;
+  }, [productsList]);
 
   const categoryProducts = useMemo(() => {
     if (!slug) return [];
-    const list = products.filter(
-      (p) => p.category.toLowerCase() === slug.toLowerCase()
-    );
+    const cleanSlug = slug.toLowerCase().trim();
+    const list = allProducts.filter((p) => {
+      const pCat = String(p.category || '').toLowerCase().trim();
+      return pCat === cleanSlug || pCat.replace(/\s+/g, '-') === cleanSlug;
+    });
 
+    const sorted = [...list];
     switch (sortBy) {
       case 'newest':
-        return list.filter((p) => p.tags.includes('new')).concat(list.filter((p) => !p.tags.includes('new')));
+        return sorted.filter((p) => p.tags?.includes('new')).concat(sorted.filter((p) => !p.tags?.includes('new')));
       case 'price-low':
-        return list.sort((a, b) => (a.discountPrice || a.price) - (b.discountPrice || b.price));
+        return sorted.sort((a, b) => (a.discountPrice || a.price) - (b.discountPrice || b.price));
       case 'price-high':
-        return list.sort((a, b) => (b.discountPrice || b.price) - (a.discountPrice || a.price));
+        return sorted.sort((a, b) => (b.discountPrice || b.price) - (a.discountPrice || a.price));
       case 'rating':
-        return list.sort((a, b) => b.rating - a.rating);
+        return sorted.sort((a, b) => b.rating - a.rating);
       case 'discount':
-        return list.sort((a, b) => {
+        return sorted.sort((a, b) => {
           const discA = a.discountPrice ? (a.price - a.discountPrice) / a.price : 0;
           const discB = b.discountPrice ? (b.price - b.discountPrice) / b.price : 0;
           return discB - discA;
         });
       case 'featured':
       default:
-        return list;
+        return sorted;
     }
-  }, [slug, sortBy]);
+  }, [allProducts, slug, sortBy]);
 
   if (!category) {
     return (

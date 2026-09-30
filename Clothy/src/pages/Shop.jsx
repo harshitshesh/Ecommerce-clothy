@@ -11,11 +11,18 @@ import EmptyState from '../components/ui/EmptyState';
 import FilterSidebar from '../components/features/FilterSidebar';
 import SortDropdown from '../components/features/SortDropdown';
 import products from '../data/products';
+import useProductStore from '../store/useProductStore';
 import categories from '../data/categories';
 
 const ITEMS_PER_PAGE = 12;
 
 export default function Shop() {
+  const productsList = useProductStore((s) => s.products);
+  const allProducts = useMemo(() => {
+    const active = (productsList || []).filter((p) => !p.isArchived);
+    return active.length > 0 ? active : products;
+  }, [productsList]);
+
   const [searchParams, setSearchParams] = useSearchParams();
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -65,13 +72,15 @@ export default function Shop() {
 
   // Filter & Sort Logic
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
+    return allProducts.filter((p) => {
       // Category filter
-      if (
-        filters.categories?.length > 0 &&
-        !filters.categories.includes(p.category.toLowerCase())
-      ) {
-        return false;
+      if (filters.categories?.length > 0) {
+        const matchesCategory = filters.categories.some((cat) => {
+          const c = String(cat).toLowerCase().trim();
+          const pCat = String(p.category || '').toLowerCase().trim();
+          return c === pCat || c === pCat.replace(/\s+/g, '-');
+        });
+        if (!matchesCategory) return false;
       }
 
       // Tag filter (e.g. 'new', 'bestseller')
@@ -111,7 +120,7 @@ export default function Shop() {
 
       return true;
     });
-  }, [filters]);
+  }, [allProducts, filters]);
 
   // Sort logic
   const sortedProducts = useMemo(() => {

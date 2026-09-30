@@ -2,7 +2,7 @@
  * Checkout Page — Multi-stage seamless checkout
  * Addresses, delivery methods, mock payment (UPI/Card/COD), and instant order confirmation
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -13,32 +13,73 @@ import {
   Truck,
   ArrowRight,
   ArrowLeft,
+  Coins,
+  MapPin,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import CheckoutStepper from '../components/features/CheckoutStepper';
 import AddressForm from '../components/features/AddressForm';
 import EmptyState from '../components/ui/EmptyState';
+import PriceBreakdown from '../components/features/PriceBreakdown';
+import CouponInput from '../components/features/CouponInput';
+import OfferList from '../components/features/OfferList';
 import useCartStore from '../store/useCartStore';
-import useUserStore from '../store/useUserStore';
+import useAuthStore from '../store/useAuthStore';
+import useOrdersStore from '../store/useOrdersStore';
+import useWalletStore from '../store/useWalletStore';
+import useWallet from '../hooks/useWallet';
+import { useAddresses } from '../hooks/useCurrentUser';
+import usePricing from '../hooks/usePricing';
+import { EXPRESS_SHIPPING_FEE } from '../utils/pricing';
+import { coinsEarnedFor } from '../utils/wallet';
 import { formatCurrency } from '../utils/formatCurrency';
+import {
+  decrementVariantStock,
+  softReserveCheckout,
+  clearCheckoutReservation,
+  getVariantSku,
+} from '../utils/variantStock';
 
 export default function Checkout() {
-  const { items, getSubtotal, getDiscount, getShipping, clearCart } = useCartStore();
-  const { addresses, addAddress } = useUserStore();
+  const { items, clearCart } = useCartStore();
+  const session = useAuthStore((s) => s.session);
+  const addresses = useAddresses();
+  const addAddress = useAuthStore((s) => s.addAddress);
+  const addOrder = useOrdersStore((state) => state.addOrder);
+  const { coins: walletBalance } = useWallet(session?.id);
 
   const [step, setStep] = useState(2); // 2: Address, 3: Payment, 4: Confirmed
   const [selectedAddressIndex, setSelectedAddressIndex] = useState(0);
-  const [showNewAddressForm, setShowNewAddressForm] = useState(false);
+  const [showNewAddressForm, setShowNewAddressForm] = useState(addresses.length === 0);
   const [shippingMethod, setShippingMethod] = useState('standard'); // 'standard' or 'express'
   const [paymentMethod, setPaymentMethod] = useState('upi'); // 'upi', 'card', 'cod'
+  const [useWalletCoins, setUseWalletCoins] = useState(false);
   const [orderConfirmedData, setOrderConfirmedData] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const subtotal = getSubtotal();
-  const discount = getDiscount();
-  const baseShipping = getShipping();
-  const shippingCost = shippingMethod === 'express' ? baseShipping + 199 : baseShipping;
-  const finalTotal = subtotal - discount + shippingCost;
+  const extraShipping = shippingMethod === 'express' ? EXPRESS_SHIPPING_FEE : 0;
+  const pricingWithoutWallet = usePricing(extraShipping);
+  const walletCoinsUsed = useWalletCoins
+    ? Math.min(walletBalance, pricingWithoutWallet.grandTotal)
+    : 0;
+  const pricing = usePricing(extraShipping, walletCoinsUsed);
+  const standardShipping = usePricing(0).shipping;
+  const amountDue = pricing.amountDue;
+  const fullyPaidByWallet = walletCoinsUsed > 0 && amountDue === 0;
+  const coinsToEarn = coinsEarnedFor(amountDue);
+
+  // Safe Stock Locking: Soft-reserve SKU stock during checkout (PRD Section 4)
+  useEffect(() => {
+    if (items.length > 0 && step !== 4) {
+      softReserveCheckout(items);
+    }
+    return () => {
+      // Release soft reservations if customer navigates away before placing order
+      if (step !== 4) {
+        clearCheckoutReservation();
+      }
+    };
+  }, [items, step]);
 
   if (items.length === 0 && step !== 4) {
     return (
@@ -55,28 +96,120 @@ export default function Checkout() {
   }
 
   const handleAddNewAddress = (newAddr) => {
-    addAddress(newAddr);
+    const saved = addAddress(newAddr);
     setShowNewAddressForm(false);
-    setSelectedAddressIndex(addresses.length);
+    if (saved) setSelectedAddressIndex(addresses.length);
     toast.success('Shipping address saved!');
   };
 
   const handlePlaceOrder = () => {
+    const activeAddress = addresses[selectedAddressIndex] || addresses[0];
+    if (!activeAddress) {
+      setShowNewAddressForm(true);
+      setStep(2);
+      toast.error('Please add a delivery address before placing the order.');
+      return;
+    }
+
     setIsProcessing(true);
 
     setTimeout(() => {
       const orderId = `ORD-2026-${Math.floor(100 + Math.random() * 900)}`;
-      const activeAddress = addresses[selectedAddressIndex] || addresses[0];
+
+      // Freeze the exact totals the customer saw before the cart is cleared
+      const snapshot = pricing;
+      const now = new Date();
+      const orderDate = now.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+
+      const baseMethod =
+        paymentMethod === 'upi' ? 'UPI' : paymentMethod === 'card' ? 'Card' : 'COD';
+      const paymentLabel =
+        walletCoinsUsed <= 0
+          ? baseMethod
+          : walletCoinsUsed >= snapshot.grandTotal
+            ? 'Wallet'
+            : `Wallet + ${baseMethod}`;
+
+      // Customer snapshot frozen onto the order (invoice "Billed to"/"Shipped to")
+      const customer = {
+        name: session?.name || activeAddress.name,
+        email: session?.email || '',
+        phone: session?.phone || activeAddress.phone || '',
+        address: activeAddress,
+      };
+
+      // Wallet: spend the coins, then credit what the order earned
+      if (walletCoinsUsed > 0) {
+        useWalletStore.getState().debit(session?.id, walletCoinsUsed, {
+          type: 'spent',
+          orderId,
+          note: `Wallet coins used on order ${orderId}`,
+        });
+      }
+      const coinsEarned = coinsToEarn;
+      if (coinsEarned > 0) {
+        useWalletStore.getState().credit(session?.id, coinsEarned, {
+          type: 'earned',
+          orderId,
+          note: `Earned on order ${orderId}`,
+        });
+      }
+
+      const confirmedItems = items.map((item) => {
+        const pId = item.id || item.productId;
+        const cName = typeof item.color === 'string' ? item.color : item.color?.name;
+        return {
+          ...item,
+          sku: item.sku || getVariantSku(pId, cName, item.size),
+        };
+      });
+
+      // Permanently decrement stock for each purchased SKU (PRD 3.1 Step 10 & Section 4)
+      confirmedItems.forEach((item) => {
+        const pId = item.id || item.productId;
+        const cName = typeof item.color === 'string' ? item.color : item.color?.name;
+        decrementVariantStock(pId, cName, item.size, item.quantity || 1);
+      });
+      clearCheckoutReservation();
 
       const confirmedData = {
         id: orderId,
-        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        items: [...items],
-        total: finalTotal,
+        invoiceNo: `INV-${orderId.replace('ORD-', '')}`,
+        userId: session?.id,
+        date: orderDate,
+        status: 'Processing',
+        items: confirmedItems,
+        pricing: snapshot,
+        subtotal: snapshot.subtotal,
+        discount: snapshot.offerDiscount,
+        shipping: snapshot.shipping,
+        offerCode: snapshot.offerCode,
+        total: snapshot.grandTotal,
+        walletCoinsUsed,
+        amountPaid: amountDue,
+        coinsUsed: walletCoinsUsed,
+        coinsEarned,
         address: activeAddress,
-        paymentMethod: paymentMethod.toUpperCase(),
+        customer,
+        paymentMethod: paymentLabel,
+        payment: {
+          method: paymentLabel,
+          last4: paymentMethod === 'card' ? '8920' : paymentMethod === 'upi' ? '****' : '',
+        },
+        tracking: [
+          { status: 'Order Placed', date: `${orderDate} ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`, completed: true },
+          { status: 'Confirmed', date: `${orderDate} ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`, completed: true },
+          { status: 'Shipped', date: '', completed: false },
+          { status: 'Out for Delivery', date: '', completed: false },
+          { status: 'Delivered', date: '', completed: false },
+        ],
       };
 
+      addOrder(confirmedData);
       setOrderConfirmedData(confirmedData);
       clearCart();
       setIsProcessing(false);
@@ -106,10 +239,13 @@ export default function Checkout() {
               Payment Authorized
             </span>
             <h1 className="font-serif text-3xl sm:text-4xl font-bold text-charcoal dark:text-cream mb-2">
-              Thank You for Your Patronage
+              {session?.name
+                ? `Thank You, ${session.name.split(' ')[0]}`
+                : 'Thank You for Your Patronage'}
             </h1>
             <p className="text-xs sm:text-sm text-gray-500 mb-8 max-w-md mx-auto">
-              Your order <strong className="text-charcoal dark:text-cream">{orderConfirmedData.id}</strong> has been received by our atelier and is being carefully prepared.
+              Your order <strong className="text-charcoal dark:text-cream">{orderConfirmedData.id}</strong> has been received by our atelier and is being carefully prepared for{' '}
+              {orderConfirmedData.address?.name || session?.name || 'you'}.
             </p>
 
             {/* Receipt Summary Card */}
@@ -128,10 +264,25 @@ export default function Checkout() {
                 <span className="text-gray-400">Payment Mode</span>
                 <span className="font-medium text-charcoal dark:text-cream">{orderConfirmedData.paymentMethod}</span>
               </div>
-              <div className="flex justify-between pt-1 text-sm font-bold">
-                <span className="text-charcoal dark:text-cream">Amount Charged</span>
-                <span className="text-gold font-serif text-base">{formatCurrency(orderConfirmedData.total)}</span>
+              <div className="flex justify-between border-b border-gray-200/40 dark:border-gray-700 pb-2.5">
+                <span className="text-gray-400">Wallet Coins Used</span>
+                <span className="font-medium text-charcoal dark:text-cream">
+                  {orderConfirmedData.coinsUsed > 0
+                    ? `${orderConfirmedData.coinsUsed} coins (−${formatCurrency(orderConfirmedData.coinsUsed)})`
+                    : 'None'}
+                </span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Coins Earned</span>
+                <span className="font-bold text-gold">
+                  +{orderConfirmedData.coinsEarned || 0} coins
+                </span>
+              </div>
+            </div>
+
+            {/* Full pricing breakdown — same component as cart, checkout & invoice */}
+            <div className="bg-cream dark:bg-charcoal p-6 rounded-2xl border border-gold/30 shadow-card text-left mb-8">
+              <PriceBreakdown pricing={orderConfirmedData.pricing} title="Order Breakdown" />
             </div>
 
             <div className="flex flex-wrap justify-center gap-4">
@@ -193,6 +344,22 @@ export default function Checkout() {
                           onSubmit={handleAddNewAddress}
                           onCancel={() => setShowNewAddressForm(false)}
                         />
+                      </div>
+                    ) : addresses.length === 0 ? (
+                      <div className="p-8 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 text-center">
+                        <MapPin size={22} className="mx-auto text-gold mb-3" />
+                        <p className="font-serif font-bold text-base text-charcoal dark:text-cream mb-1">
+                          Add your first address
+                        </p>
+                        <p className="text-xs text-gray-500 mb-4">
+                          Save a delivery destination so we know where to send your order.
+                        </p>
+                        <button
+                          onClick={() => setShowNewAddressForm(true)}
+                          className="px-5 py-2.5 bg-charcoal text-cream dark:bg-cream dark:text-charcoal rounded-xl text-xs font-bold uppercase tracking-wider hover:opacity-90 transition-opacity"
+                        >
+                          + Add Address
+                        </button>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -256,7 +423,7 @@ export default function Checkout() {
                             </div>
                           </div>
                           <span className="text-xs font-bold text-success">
-                            {baseShipping === 0 ? 'FREE' : formatCurrency(baseShipping)}
+                            {standardShipping === 0 ? 'FREE' : formatCurrency(standardShipping)}
                           </span>
                         </label>
 
@@ -285,7 +452,7 @@ export default function Checkout() {
                             </div>
                           </div>
                           <span className="text-xs font-bold text-gold">
-                            +{formatCurrency(199)}
+                            +{formatCurrency(EXPRESS_SHIPPING_FEE)}
                           </span>
                         </label>
                       </div>
@@ -293,7 +460,14 @@ export default function Checkout() {
 
                     <div className="pt-6 border-t border-gray-200/60 dark:border-gray-800 flex justify-end">
                       <button
-                        onClick={() => setStep(3)}
+                        onClick={() => {
+                          if (addresses.length === 0) {
+                            setShowNewAddressForm(true);
+                            toast.error('Add your first address to continue.');
+                            return;
+                          }
+                          setStep(3);
+                        }}
                         className="px-8 py-3.5 bg-charcoal text-cream dark:bg-cream dark:text-charcoal rounded-xl text-xs font-bold uppercase tracking-widest hover:opacity-90 transition-opacity flex items-center gap-2 shadow-soft"
                       >
                         <span>Continue to Payment</span>
@@ -320,7 +494,63 @@ export default function Checkout() {
                       </p>
                     </div>
 
-                    {/* Payment Mode Tabs */}
+                    {/* Clozari Wallet */}
+                    <div
+                      className={`p-4 rounded-xl border ${
+                        useWalletCoins && walletCoinsUsed > 0
+                          ? 'border-gold bg-gold/5'
+                          : 'border-gray-200 dark:border-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-gold/10 text-gold flex items-center justify-center shrink-0">
+                            <Coins size={18} />
+                          </div>
+                          <div>
+                            <span className="text-xs font-bold block text-charcoal dark:text-cream">
+                              Clozari Wallet
+                            </span>
+                            <span className="text-[11px] text-gray-500">
+                              Balance: <strong className="text-gold">{walletBalance}</strong> coins
+                              {' '}(1 coin = Rs. 1)
+                            </span>
+                          </div>
+                        </div>
+
+                        <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                          <span className="text-[11px] font-semibold text-gray-500">
+                            Use wallet coins
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={useWalletCoins}
+                            disabled={walletBalance <= 0}
+                            onChange={(e) => setUseWalletCoins(e.target.checked)}
+                            className="w-4 h-4 accent-gold disabled:opacity-40"
+                            aria-label="Use wallet coins"
+                          />
+                        </label>
+                      </div>
+
+                      {walletBalance <= 0 && (
+                        <p className="text-[11px] text-gray-400 mt-2">
+                          Your wallet balance is 0 — place an order to start earning coins.
+                        </p>
+                      )}
+
+                      {useWalletCoins && walletCoinsUsed > 0 && (
+                        <p className="text-[11px] font-semibold text-success mt-2">
+                          {walletCoinsUsed} coins applied — you pay{' '}
+                          {formatCurrency(amountDue)} via{' '}
+                          {fullyPaidByWallet ? 'wallet only' : 'another method'}.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Payment Mode Tabs (hidden when the wallet covers everything) */}
+                    {!fullyPaidByWallet && (
+                    <>
                     <div className="grid grid-cols-3 gap-3">
                       <button
                         type="button"
@@ -371,7 +601,6 @@ export default function Checkout() {
                         <input
                           type="text"
                           placeholder="yourname@okhdfcbank"
-                          defaultValue="arjun.mehta@oksbi"
                           className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal"
                         />
                         <p className="text-[11px] text-gray-500">
@@ -388,8 +617,7 @@ export default function Checkout() {
                           </label>
                           <input
                             type="text"
-                            placeholder="4532 •••• •••• 8920"
-                            defaultValue="4532 8921 4452 8920"
+                            placeholder="Card number"
                             className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal font-mono"
                           />
                         </div>
@@ -398,12 +626,11 @@ export default function Checkout() {
                             <label className="block uppercase font-bold text-gray-400 mb-1">
                               Expiry Date
                             </label>
-                            <input
-                              type="text"
-                              placeholder="MM/YY"
-                              defaultValue="09/28"
-                              className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal font-mono"
-                            />
+                              <input
+                                type="text"
+                                placeholder="MM/YY"
+                                className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal font-mono"
+                              />
                           </div>
                           <div>
                             <label className="block uppercase font-bold text-gray-400 mb-1">
@@ -412,7 +639,6 @@ export default function Checkout() {
                             <input
                               type="password"
                               placeholder="•••"
-                              defaultValue="382"
                               maxLength={4}
                               className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal font-mono"
                             />
@@ -428,6 +654,18 @@ export default function Checkout() {
                         </p>
                       </div>
                     )}
+                    </>
+                    )}
+
+                    {/* Earnings preview + place order */}
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-success/10 border border-success/30 text-xs">
+                      <span className="flex items-center gap-1.5 font-semibold text-success">
+                        <Coins size={14} /> You will earn {coinsToEarn} coins on this order
+                      </span>
+                      <span className="font-bold text-charcoal dark:text-cream">
+                        {formatCurrency(amountDue)} to pay
+                      </span>
+                    </div>
 
                     <div className="pt-6 border-t border-gray-200/60 dark:border-gray-800 flex items-center justify-between">
                       <button
@@ -443,7 +681,11 @@ export default function Checkout() {
                         disabled={isProcessing}
                         className="px-8 py-3.5 bg-gold text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-gold-dark transition-colors flex items-center gap-2 shadow-soft disabled:opacity-50"
                       >
-                        {isProcessing ? 'Authorizing Order...' : `Pay ${formatCurrency(finalTotal)}`}
+                        {isProcessing
+                          ? 'Authorizing Order...'
+                          : fullyPaidByWallet
+                            ? 'Place Order with Wallet'
+                            : `Pay ${formatCurrency(amountDue)}`}
                       </button>
                     </div>
                   </motion.div>
@@ -482,25 +724,14 @@ export default function Checkout() {
               </div>
 
               {/* Price Breakdown */}
-              <div className="pt-4 border-t border-gray-200/60 dark:border-gray-800 space-y-2 text-xs">
-                <div className="flex justify-between text-gray-500">
-                  <span>Subtotal</span>
-                  <span className="font-semibold text-charcoal dark:text-cream">{formatCurrency(subtotal)}</span>
+              <PriceBreakdown pricing={pricing} title="Order Summary" />
+
+              {/* Offers — always visible while checking out, wallet or not */}
+              <div className="pt-4 border-t border-gray-200/60 dark:border-gray-800 space-y-4">
+                <div>
+                  <CouponInput />
                 </div>
-                {discount > 0 && (
-                  <div className="flex justify-between text-success">
-                    <span>Discount</span>
-                    <span className="font-semibold">-{formatCurrency(discount)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-gray-500">
-                  <span>Shipping</span>
-                  <span>{shippingCost === 0 ? <strong className="text-success">FREE</strong> : formatCurrency(shippingCost)}</span>
-                </div>
-                <div className="flex justify-between text-sm font-bold text-charcoal dark:text-cream pt-2 border-t border-gray-200/40 dark:border-gray-700">
-                  <span>Final Total</span>
-                  <span className="text-gold font-serif text-lg">{formatCurrency(finalTotal)}</span>
-                </div>
+                <OfferList />
               </div>
 
               <div className="pt-2 text-center">

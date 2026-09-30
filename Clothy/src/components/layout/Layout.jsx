@@ -4,6 +4,7 @@
  */
 import { Outlet, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
+import toast from 'react-hot-toast';
 import Lenis from 'lenis';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -14,11 +15,21 @@ import CartDrawer from '../features/CartDrawer';
 import WishlistDrawer from '../features/WishlistDrawer';
 import SearchOverlay from '../features/SearchOverlay';
 import QuickViewModal from '../features/QuickViewModal';
+import AuthPromptModal from '../features/AuthPromptModal';
+import useCartStore from '../../store/useCartStore';
 
 gsap.registerPlugin(ScrollTrigger);
 
 export default function Layout() {
   const location = useLocation();
+  const cartItems = useCartStore((state) => state.items);
+  const appliedOfferCode = useCartStore((state) => state.appliedOfferCode);
+
+  // Auto-remove an offer the moment the cart stops qualifying for it
+  useEffect(() => {
+    const removed = useCartStore.getState().reconcileOffer();
+    if (removed) toast.error(removed.message);
+  }, [cartItems, appliedOfferCode]);
 
   // Scroll to top on route change
   useEffect(() => {
@@ -83,6 +94,8 @@ export default function Layout() {
       <WishlistDrawer />
       <SearchOverlay />
       <QuickViewModal />
+      {/* Auth gate prompt for logged-out add-to-cart attempts */}
+      <AuthPromptModal />
     </div>
   );
 }

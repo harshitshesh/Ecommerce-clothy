@@ -2,7 +2,7 @@
  * ProductCard — Premium product card with GSAP scroll reveal + Framer Motion hover
  */
 import { useRef, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import useCartStore from '../../store/useCartStore';
 import useWishlistStore from '../../store/useWishlistStore';
 import useUIStore from '../../store/useUIStore';
+import useAuthStore from '../../store/useAuthStore';
 import { formatCurrency, getDiscountPercent } from '../../utils/formatCurrency';
 import RatingStars from './RatingStars';
 
@@ -20,8 +21,10 @@ export default function ProductCard({ product, index = 0 }) {
   const cardRef = useRef(null);
   const [isHovered, setIsHovered] = useState(false);
   const addItem = useCartStore((s) => s.addItem);
+  const gateCartAction = useAuthStore((s) => s.gateCartAction);
   const { toggleItem, isWishlisted } = useWishlistStore();
   const setQuickViewProduct = useUIStore((s) => s.setQuickViewProduct);
+  const location = useLocation();
   const wishlisted = isWishlisted(product.id);
   const discount = getDiscountPercent(product.price, product.discountPrice);
 
@@ -77,7 +80,22 @@ export default function ProductCard({ product, index = 0 }) {
   const handleAddToCart = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    addItem(product, product.sizes[0], product.colors[0]);
+
+    const size = product.sizes?.[0] || 'M';
+    const colour = product.colors?.[0] || null;
+
+    // Auth gate: logged-out visitors get the prompt instead of a cart add.
+    const gated = gateCartAction({
+      productId: product.id,
+      sku: `${product.id.toUpperCase()}-${colour?.name || 'STD'}-${size}`,
+      colour,
+      size,
+      qty: 1,
+      returnTo: `${location.pathname}${location.search}`,
+    });
+    if (gated) return;
+
+    addItem(product, size, colour);
     toast.success(`${product.name} added to cart!`, { icon: '🛍️' });
   };
 

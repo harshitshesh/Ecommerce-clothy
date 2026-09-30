@@ -2,7 +2,7 @@
  * CLOZARI — Mock Reviews Data
  */
 const reviews = [
-  { id: 'rev_01', productId: 'prod_001', userName: 'Arjun M.', rating: 5, date: '2026-09-10', title: 'Perfect fit and quality', text: 'The oversized fit is exactly what I was looking for. The cotton feels incredibly soft and premium. Will definitely order more colors.', helpful: 24, images: [] },
+  { id: 'rev_01', productId: 'prod_001', userName: 'Aarav M.', rating: 5, date: '2026-09-10', title: 'Perfect fit and quality', text: 'The oversized fit is exactly what I was looking for. The cotton feels incredibly soft and premium. Will definitely order more colors.', helpful: 24, images: [] },
   { id: 'rev_02', productId: 'prod_001', userName: 'Priya S.', rating: 4, date: '2026-09-05', title: 'Great quality, slightly long', text: 'Love the fabric quality and the relaxed fit. It runs a bit long for my height (5\'4") but still looks great tucked in.', helpful: 18, images: [] },
   { id: 'rev_03', productId: 'prod_004', userName: 'Rahul K.', rating: 5, date: '2026-08-28', title: 'Best basic tee ever', text: 'I\'ve been searching for the perfect crew neck tee and this is it. The weight is just right — not too thin, not too thick. Ordered 3 of each color.', helpful: 42, images: [] },
   { id: 'rev_04', productId: 'prod_007', userName: 'Vikram P.', rating: 5, date: '2026-08-20', title: 'Premium selvedge at great price', text: 'The selvedge detailing is beautiful. These jeans are stiff initially but are breaking in beautifully. The slim fit is perfect — snug but comfortable.', helpful: 31, images: [] },

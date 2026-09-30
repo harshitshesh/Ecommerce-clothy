@@ -1,11 +1,12 @@
 /**
  * App — Root application component with full client routing and notifications
+ * Supports both customer storefront and dedicated /admin portal
  */
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Layout from './components/layout/Layout';
 
-// Pages
+// Customer Pages
 import Home from './pages/Home';
 import Shop from './pages/Shop';
 import CategoryPage from './pages/CategoryPage';
@@ -19,10 +20,26 @@ import About from './pages/About';
 import Contact from './pages/Contact';
 import Help from './pages/Help';
 import Account from './pages/Account';
+import Wallet from './pages/Wallet';
 import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
 import Compare from './pages/Compare';
 import NotFound from './pages/NotFound';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+
+// Admin Portal Pages & Infrastructure
+import AdminLogin from './pages/admin/AdminLogin';
+import AdminLayout from './components/admin/AdminLayout';
+import AdminProtectedRoute from './components/admin/AdminProtectedRoute';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminProducts from './pages/admin/AdminProducts';
+import AdminVariantMatrix from './pages/admin/AdminVariantMatrix';
+import AdminOrders from './pages/admin/AdminOrders';
+import AdminExchanges from './pages/admin/AdminExchanges';
+import AdminOffers from './pages/admin/AdminOffers';
+import AdminCustomers from './pages/admin/AdminCustomers';
 
 export default function App() {
   return (
@@ -58,13 +75,42 @@ export default function App() {
       />
 
       <Routes>
+        {/* Admin Login Route (standalone, outside customer Layout) */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+
+        {/* Admin Protected Command Center */}
+        <Route
+          path="/admin"
+          element={
+            <AdminProtectedRoute>
+              <AdminLayout />
+            </AdminProtectedRoute>
+          }
+        >
+          <Route index element={<AdminDashboard />} />
+          <Route path="products" element={<AdminProducts />} />
+          <Route path="products/:id/stock" element={<AdminVariantMatrix />} />
+          <Route path="orders" element={<AdminOrders />} />
+          <Route path="exchanges" element={<AdminExchanges />} />
+          <Route path="offers" element={<AdminOffers />} />
+          <Route path="customers" element={<AdminCustomers />} />
+        </Route>
+
+        {/* Customer Public Storefront Routes */}
         <Route path="/" element={<Layout />}>
           <Route index element={<Home />} />
           <Route path="shop" element={<Shop />} />
           <Route path="category/:slug" element={<CategoryPage />} />
           <Route path="product/:slug" element={<ProductDetail />} />
           <Route path="cart" element={<Cart />} />
-          <Route path="checkout" element={<Checkout />} />
+          <Route
+            path="checkout"
+            element={
+              <ProtectedRoute>
+                <Checkout />
+              </ProtectedRoute>
+            }
+          />
           <Route path="wishlist" element={<Wishlist />} />
           <Route path="search" element={<Search />} />
           <Route path="offers" element={<Offers />} />
@@ -72,11 +118,56 @@ export default function App() {
           <Route path="contact" element={<Contact />} />
           <Route path="help" element={<Help />} />
           <Route path="faq" element={<Help />} />
-          <Route path="account" element={<Account />} />
-          <Route path="account/orders" element={<Orders />} />
-          <Route path="account/orders/:id" element={<OrderDetail />} />
-          <Route path="account/wishlist" element={<Wishlist />} />
-          <Route path="account/addresses" element={<Account />} />
+          <Route path="login" element={<Login />} />
+          <Route path="signup" element={<Signup />} />
+          <Route
+            path="account"
+            element={
+              <ProtectedRoute>
+                <Account />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="account/orders"
+            element={
+              <ProtectedRoute>
+                <Orders />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="account/orders/:id"
+            element={
+              <ProtectedRoute>
+                <OrderDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="account/wishlist"
+            element={
+              <ProtectedRoute>
+                <Wishlist />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="account/addresses"
+            element={
+              <ProtectedRoute>
+                <Account />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="account/wallet"
+            element={
+              <ProtectedRoute>
+                <Wallet />
+              </ProtectedRoute>
+            }
+          />
           <Route path="compare" element={<Compare />} />
           <Route path="*" element={<NotFound />} />
         </Route>

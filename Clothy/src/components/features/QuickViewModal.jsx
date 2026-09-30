@@ -3,20 +3,23 @@
  * Allows selecting size, color, quantity, and instantly adding to cart
  */
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Heart, ShoppingBag, Plus, Minus, ArrowRight, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useUIStore from '../../store/useUIStore';
 import useCartStore from '../../store/useCartStore';
 import useWishlistStore from '../../store/useWishlistStore';
+import useAuthStore from '../../store/useAuthStore';
 import RatingStars from '../ui/RatingStars';
 import { formatCurrency, getDiscountPercent } from '../../utils/formatCurrency';
 
 export default function QuickViewModal() {
   const { quickViewProduct, closeQuickView, openCart } = useUIStore();
   const addItem = useCartStore((s) => s.addItem);
+  const gateCartAction = useAuthStore((s) => s.gateCartAction);
   const { toggleItem, isWishlisted } = useWishlistStore();
+  const location = useLocation();
 
   const product = quickViewProduct;
   const [selectedImage, setSelectedImage] = useState(0);
@@ -55,6 +58,26 @@ export default function QuickViewModal() {
   const discount = getDiscountPercent(product.price, product.discountPrice);
 
   const handleAddToCart = () => {
+    if (product.stock <= 0) {
+      toast.error('This piece is out of stock right now.');
+      return;
+    }
+    if (!selectedSize) {
+      toast.error('Please select a size before adding to your bag.');
+      return;
+    }
+
+    // Auth gate: logged-out visitors get the prompt instead of a cart add.
+    const gated = gateCartAction({
+      productId: product.id,
+      sku: `${product.id.toUpperCase()}-${selectedColor?.name || 'STD'}-${selectedSize}`,
+      colour: selectedColor,
+      size: selectedSize,
+      qty: quantity,
+      returnTo: `${location.pathname}${location.search}`,
+    });
+    if (gated) return;
+
     addItem(product, selectedSize, selectedColor, quantity);
     toast.success(`${product.name} added to cart!`, { icon: '🛍️' });
     closeQuickView();

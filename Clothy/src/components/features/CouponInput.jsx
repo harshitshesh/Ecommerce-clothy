@@ -5,16 +5,20 @@ import { useState } from 'react';
 import { Tag, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useCartStore from '../../store/useCartStore';
+import { getOfferByCode } from '../../data/offers';
 
 export default function CouponInput() {
   const [code, setCode] = useState('');
-  const { coupon, applyCoupon, removeCoupon } = useCartStore();
+  const appliedOfferCode = useCartStore((state) => state.appliedOfferCode);
+  const applyOffer = useCartStore((state) => state.applyOffer);
+  const removeOffer = useCartStore((state) => state.removeOffer);
+  const appliedOffer = getOfferByCode(appliedOfferCode);
 
   const handleApply = (e) => {
     e.preventDefault();
     if (!code.trim()) return;
 
-    const res = applyCoupon(code.trim());
+    const res = applyOffer(code.trim());
     if (res.success) {
       toast.success(res.message, { icon: '🎉' });
       setCode('');
@@ -24,24 +28,24 @@ export default function CouponInput() {
   };
 
   const handleRemove = () => {
-    removeCoupon();
-    toast.success('Coupon removed');
+    removeOffer();
+    toast.success('Offer removed');
   };
 
-  if (coupon) {
+  if (appliedOffer) {
     return (
       <div className="flex items-center justify-between p-3 rounded-xl bg-gold/10 border border-gold/30 text-xs">
         <div className="flex items-center gap-2">
           <Tag size={15} className="text-gold shrink-0" />
           <div>
-            <span className="font-mono font-bold text-gold tracking-widest">{coupon.code}</span>
-            <p className="text-[11px] text-gray-500">{coupon.description}</p>
+            <span className="font-mono font-bold text-gold tracking-widest">{appliedOffer.code}</span>
+            <p className="text-[11px] text-gray-500">{appliedOffer.description}</p>
           </div>
         </div>
         <button
           onClick={handleRemove}
           className="p-1 rounded-full text-gray-400 hover:text-error transition-colors"
-          aria-label="Remove coupon"
+          aria-label="Remove offer"
         >
           <X size={15} />
         </button>
@@ -82,10 +86,10 @@ export default function CouponInput() {
         <span>•</span>
         <button
           type="button"
-          onClick={() => setCode('WELCOME500')}
+          onClick={() => setCode('WELCOME15')}
           className="underline hover:text-gold"
         >
-          WELCOME500
+          WELCOME15
         </button>
         <span>•</span>
         <button

@@ -2,12 +2,14 @@
  * AddressForm — Shipping and billing address capture form
  */
 import { useState } from 'react';
+import { useSession } from '../../hooks/useCurrentUser';
 
 export default function AddressForm({ initialData = null, onSubmit, onCancel }) {
+  const session = useSession();
   const [formData, setFormData] = useState(
     initialData || {
-      name: '',
-      phone: '',
+      name: session?.name || '',
+      phone: session?.phone || '',
       line1: '',
       line2: '',
       city: '',
@@ -43,7 +45,7 @@ export default function AddressForm({ initialData = null, onSubmit, onCancel }) 
             required
             value={formData.name}
             onChange={handleChange}
-            placeholder="e.g. Arjun Mehta"
+            placeholder="Your full name"
             className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal text-charcoal dark:text-cream focus:outline-none focus:border-gold"
           />
         </div>
@@ -58,7 +60,7 @@ export default function AddressForm({ initialData = null, onSubmit, onCancel }) 
             required
             value={formData.phone}
             onChange={handleChange}
-            placeholder="e.g. 9876543210"
+            placeholder="10-digit mobile number"
             className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal text-charcoal dark:text-cream focus:outline-none focus:border-gold"
           />
         </div>
@@ -74,7 +76,7 @@ export default function AddressForm({ initialData = null, onSubmit, onCancel }) 
           required
           value={formData.line1}
           onChange={handleChange}
-          placeholder="e.g. 42, Park Street, 3rd Floor"
+          placeholder="House no., street, area"
           className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal text-charcoal dark:text-cream focus:outline-none focus:border-gold"
         />
       </div>
@@ -104,7 +106,7 @@ export default function AddressForm({ initialData = null, onSubmit, onCancel }) 
             required
             value={formData.city}
             onChange={handleChange}
-            placeholder="Bangalore"
+            placeholder="City"
             className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal text-charcoal dark:text-cream focus:outline-none focus:border-gold"
           />
         </div>
@@ -119,7 +121,7 @@ export default function AddressForm({ initialData = null, onSubmit, onCancel }) 
             required
             value={formData.state}
             onChange={handleChange}
-            placeholder="Karnataka"
+            placeholder="State"
             className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal text-charcoal dark:text-cream focus:outline-none focus:border-gold"
           />
         </div>
@@ -134,7 +136,7 @@ export default function AddressForm({ initialData = null, onSubmit, onCancel }) 
             required
             value={formData.pin}
             onChange={handleChange}
-            placeholder="560034"
+            placeholder="6-digit PIN code"
             className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-cream dark:bg-charcoal text-charcoal dark:text-cream focus:outline-none focus:border-gold"
           />
         </div>
